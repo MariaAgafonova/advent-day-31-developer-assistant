@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "natoday-developer-assistant"
+version = "0.1.0"
+description = "Russian documentation assistant with local RAG and stdio MCP"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "mcp==2.3.0", "chromadb==1.5.9", "sentence-transformers==6.1.0",
+  "openai==3.31.0", "python-dotenv==1.2.4",
+  "pydantic==2.14.1",
+  "chroma-hnswlib==0.7.5", "torch==2.6.0+cpu",
+]
+
+[project.scripts]
+developer-assistant = "developer_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["developer_assistant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: real checkout, embeddings and local Chroma", "live_api: real OpenAI API request"]
+addopts = "-m 'not integration and not live_api'"

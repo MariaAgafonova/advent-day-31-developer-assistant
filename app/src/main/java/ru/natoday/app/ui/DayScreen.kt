@@ -9,7 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -23,7 +23,7 @@ import ru.natoday.app.data.Task
 import ru.natoday.app.reminders.tomorrowForReview
 import java.time.LocalDate
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DayScreen(vm: DayViewModel, onSettings: () -> Unit, onReview: (LocalDate) -> Unit, onVoice: (LocalDate) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -104,7 +104,8 @@ fun DayScreen(vm: DayViewModel, onSettings: () -> Unit, onReview: (LocalDate) ->
 
 @Composable
 fun TaskEvents(vm: TaskActionsViewModel, snackbar: SnackbarHostState, onSaved: () -> Unit = {}) {
-    val resources by rememberUpdatedState(LocalResources.current)
+    val context = LocalContext.current
+    val resources by rememberUpdatedState(context.resources)
     val saved by rememberUpdatedState(onSaved)
     LaunchedEffect(vm) {
         vm.events.collect { event ->

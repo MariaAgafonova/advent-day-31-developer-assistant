@@ -44,6 +44,11 @@ def make_context(question, hits, checkout):
     return {"question": question, "documentation": documents, "checkout_facts": current, "checkout_errors": {k: v for k, v in checkout.items() if v and v.get("status") == "error"}}
 
 
+def structure_sources(context):
+    structure = re.search(r"устроен|структур|архитектур|организован|structure|layout|architecture|entry point", context["question"], re.IGNORECASE)
+    return bool(structure and context["documentation"] and any(f["id"] == "MCP_FILES" for f in context["checkout_facts"]))
+
+
 def render(answer: GroundedAnswer, context):
     if not answer.supported:
         return "В проиндексированной документации ответа не найдено. Доступные факты MCP также не подтверждают ответ."
@@ -51,6 +56,10 @@ def render(answer: GroundedAnswer, context):
     sources.update({d["id"]: "MCP:" + d["tool"] for d in context["checkout_facts"]})
     if not answer.statements:
         raise AssistantError("Модель вернула пустой ответ без доказательств.")
+    if structure_sources(context):
+        cited = {source for statement in answer.statements for source in statement.evidence}
+        if "MCP_FILES" not in cited or not cited.intersection(d["id"] for d in context["documentation"]):
+            raise AssistantError("Ответ о структуре не подтверждён одновременно документацией и списком файлов MCP. Ответ отклонён; повторите запрос.")
     output = []
     for statement in answer.statements:
         if any(source not in sources for source in statement.evidence):
@@ -64,20 +73,48 @@ def render(answer: GroundedAnswer, context):
 
 def generate(context):
     from openai import OpenAI, APIConnectionError, APITimeoutError, APIStatusError
-    key, model = api_settings()
+    settings = api_settings()
+    instructions = INSTRUCTIONS
+    if structure_sources(context):
+        instructions += '\nДля этого вопроса обязателен отдельный пункт с двумя конкретными путями из checkout_facts MCP_FILES и evidence=["MCP_FILES"]. Другой пункт опиши по документации с её ID. Ссылка MCP_BRANCH не заменяет MCP_FILES. Если доказательств ответа нет, верни supported=false.'
     try:
-        with OpenAI(api_key=key, timeout=60, max_retries=1) as client:
-            result = client.responses.parse(
-                model=model, instructions=INSTRUCTIONS,
-                input=json.dumps(context, ensure_ascii=False),
-                text_format=GroundedAnswer, max_output_tokens=2000, store=False,
-            )
+        with OpenAI(api_key=settings.api_key, base_url=settings.base_url, timeout=settings.timeout, max_retries=1) as client:
+            if settings.provider == "DeepSeek":
+                json_rules = '\nВерни только JSON без Markdown, по следующей JSON schema: ' + json.dumps(GroundedAnswer.model_json_schema(), ensure_ascii=False)
+                json_rules += '\nПример при отсутствии доказательств: {"supported": false, "statements": []}. Пиши кратко, не более трёх пунктов.'
+                result = client.chat.completions.create(
+                    model=settings.model,
+                    messages=[
+                        {"role": "system", "content": instructions + json_rules},
+                        {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
+                    ],
+                    response_format={"type": "json_object"},
+                    extra_body={"thinking": {"type": "disabled"}},
+                    max_tokens=settings.max_tokens,
+                )
+                if not result.choices:
+                    raise AssistantError("DeepSeek вернул пустой ответ. Повторите запрос.")
+                choice = result.choices[0]
+                if choice.finish_reason == "length":
+                    raise AssistantError("Ответ DeepSeek обрезан. Увеличьте DEEPSEEK_MAX_TOKENS или задайте более короткий вопрос.")
+                if choice.finish_reason != "stop" or not choice.message.content:
+                    raise AssistantError("DeepSeek не вернул завершённый ответ. Повторите запрос.")
+                answer = GroundedAnswer.model_validate_json(choice.message.content, strict=True)
+            else:
+                result = client.responses.parse(
+                    model=settings.model, instructions=instructions,
+                    input=json.dumps(context, ensure_ascii=False),
+                    text_format=GroundedAnswer, max_output_tokens=settings.max_tokens, store=False,
+                )
+                answer = result.output_parsed
     except (APIConnectionError, APITimeoutError) as exc:
-        raise AssistantError("OpenAI API недоступен или превышен таймаут. Проверьте подключение и повторите запрос.") from exc
+        raise AssistantError(f"{settings.provider} API недоступен или превышен таймаут. Проверьте подключение и повторите запрос.") from exc
     except APIStatusError as exc:
-        raise AssistantError(f"OpenAI API вернул HTTP {exc.status_code}. Проверьте ключ, доступ к OPENAI_MODEL и лимиты аккаунта.") from exc
+        raise AssistantError(f"{settings.provider} API вернул HTTP {exc.status_code}. Проверьте ключ, доступ к модели и баланс/лимиты аккаунта.") from exc
+    except AssistantError:
+        raise
     except Exception as exc:
-        raise AssistantError("Не удалось получить структурированный ответ OpenAI. Проверьте, что OPENAI_MODEL поддерживает Responses API и Structured Outputs.") from exc
-    if result.output_parsed is None:
-        raise AssistantError("OpenAI не вернул завершённый структурированный ответ; готового ответа нет.")
-    return render(result.output_parsed, context)
+        raise AssistantError(f"Не удалось получить корректный структурированный ответ {settings.provider}. Ответ не показан; проверьте модель и повторите запрос.") from exc
+    if answer is None:
+        raise AssistantError(f"{settings.provider} не вернул завершённый структурированный ответ; готового ответа нет.")
+    return render(answer, context)

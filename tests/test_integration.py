@@ -64,8 +64,8 @@ def test_real_mcp_and_structure_context(search):
 @pytest.mark.parametrize("question", ["Как устроен проект?", "Какая сейчас git-ветка?", "Как включить телепортацию физических предметов в приложении «На сегодня»?"])
 def test_live_generation(question):
     load_environment()
-    if not os.environ.get("OPENAI_API_KEY") or not os.environ.get("OPENAI_MODEL"):
-        pytest.skip("OPENAI_API_KEY/OPENAI_MODEL не заданы: реальная генерация не проверена")
+    if not os.environ.get("DEEPSEEK_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
+        pytest.skip("API-ключ не задан: реальная генерация не проверена")
     api_settings()
     context = make_context(question, Search().query(question), asyncio.run(checkout_context()))
     answer = generate(context)

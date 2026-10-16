@@ -110,7 +110,7 @@ Kotlin, Compose Material 3, ViewModel + StateFlow + Coroutines, Room 2.8.4, Pref
 
 Python-ассистент остаётся отдельным терминальным инструментом и изучает документацию этого же Android-репозитория. Он не входит в APK. Инструкции установки, индексации, `/help` и проверки MCP — [docs/assistant.md](docs/assistant.md).
 
-Для самого Android-приложения ключи API не нужны. Для генерации ответа Python-ассистентом используются `OPENAI_API_KEY` и `OPENAI_MODEL`; без них доступны индексация, поиск и MCP.
+Для самого Android-приложения ключи API не нужны. Python-ассистент поддерживает DeepSeek (`DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`, URL/таймаут/лимит токенов) и OpenAI (`OPENAI_API_KEY`, `OPENAI_MODEL`). Непустой ключ DeepSeek выбирает его в первую очередь. Без ключа доступны индексация, поиск и MCP; настройки и команды — в [docs/assistant.md](docs/assistant.md).
 
 ## GitLab
 

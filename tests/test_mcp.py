@@ -58,7 +58,7 @@ def test_git_timeout_and_fixed_arguments(repository, monkeypatch):
 def test_real_stdio_session(repository):
     package = repository / "developer_assistant"
     package.mkdir()
-    for name in ["__init__.py", "config.py", "mcp_server.py"]:
+    for name in ["__init__.py", "config.py", "git_review.py", "mcp_server.py"]:
         shutil.copyfile(ROOT / "developer_assistant" / name, package / name)
     async def probe(expected):
         params = StdioServerParameters(command=sys.executable, args=["-m", "developer_assistant.mcp_server"], cwd=str(repository))
@@ -66,7 +66,8 @@ def test_real_stdio_session(repository):
             async with ClientSession(read, write, read_timeout_seconds=10) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert {t.name for t in tools.tools} == {"get_current_branch", "list_project_files"}
+                assert {"get_current_branch", "list_project_files", "get_changed_files", "get_diff",
+                        "read_file_at_commit", "list_commit_files"} == {t.name for t in tools.tools}
                 assert (await call(session, "get_current_branch"))["status"] == expected
                 files = await call(session, "list_project_files", {"limit": 1})
                 if expected != "error":

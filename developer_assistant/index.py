@@ -34,7 +34,7 @@ def manifest(data=DATA):
         raise AssistantError("Метаданные индекса повреждены. Выполните index заново.") from exc
 
 
-def build_index(repo=PROJECT, data=DATA, embedder=None):
+def build_index(repo=PROJECT, data=DATA, embedder=None, *, corpus=None, snapshot=None):
     data.mkdir(parents=True, exist_ok=True)
     lock = data / "index.lock"
     try:
@@ -46,9 +46,10 @@ def build_index(repo=PROJECT, data=DATA, embedder=None):
     collection = None
     activated = False
     try:
-        docs, skipped = read_documents(repo)
+        docs, skipped = read_documents(repo) if corpus is None else ([], [])
         embedder = embedder or Embeddings()
-        chunks = [chunk for doc in docs for chunk in chunk_document(doc, embedder.tokenizer)]
+        chunks = ([chunk for doc in docs for chunk in chunk_document(doc, embedder.tokenizer)]
+                  if corpus is None else list(corpus))
         if not chunks:
             raise AssistantError("Нет фрагментов для индексации. Предыдущий индекс сохранён.")
         db = client(data)
@@ -83,9 +84,12 @@ def build_index(repo=PROJECT, data=DATA, embedder=None):
             "chunking": [CHUNK_TOKENS, OVERLAP_TOKENS],
             "file_count": len({c.path for c in chunks}), "chunk_count": len(chunks),
             "reused_embeddings": reused,
-            "files": {d.path: hashlib.sha256(d.text.encode()).hexdigest() for d in docs},
+            "files": ({d.path: hashlib.sha256(d.text.encode()).hexdigest() for d in docs}
+                      if corpus is None else {c.path: "commit:" + snapshot["commit"] for c in chunks}),
             "skipped": skipped,
         }
+        if snapshot is not None:
+            result["snapshot"] = snapshot
         pending = data / "active.json.tmp"
         pending.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(pending, data / "active.json")

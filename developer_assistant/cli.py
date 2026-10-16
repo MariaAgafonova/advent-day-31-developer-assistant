@@ -81,9 +81,22 @@ def main():
     ask_parser = commands.add_parser("ask", help="Один вопрос (эквивалент /help <вопрос>)")
     ask_parser.add_argument("question")
     ask_parser.add_argument("--context-only", action="store_true", help="Показать реальный RAG/MCP-контекст без генерации")
+    review_parser = commands.add_parser("review", help="Ревью commit-изменений через MCP, RAG и LLM")
+    review_parser.add_argument("--repo", required=True)
+    review_parser.add_argument("--base", required=True)
+    review_parser.add_argument("--head", required=True)
+    review_parser.add_argument("--output", default="artifacts/review.md")
     args = parser.parse_args()
     try:
-        if args.command == "index":
+        if args.command == "review":
+            from .review import run_review
+            code, report = asyncio.run(run_review(args.repo, args.base, args.head, args.output))
+            print_json({"status": report["status"], "findings": len(report["findings"]),
+                        "reviewed_files": report["scope"]["reviewed_files"],
+                        "partial_files": report["scope"]["partial_files"],
+                        "output": args.output, "error": report.get("error")})
+            return code
+        elif args.command == "index":
             from .index import build_index
             result = build_index()
             print_json({key: result[key] for key in ["file_count", "chunk_count", "reused_embeddings", "embedding"]} | {"skipped_count": len(result["skipped"])})

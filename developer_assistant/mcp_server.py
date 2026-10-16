@@ -8,6 +8,7 @@ from pathlib import Path
 from mcp.server import MCPServer
 
 from .config import PROJECT
+from .git_review import CommitGit, GitReviewError
 
 
 class GitFailure(Exception):
@@ -86,6 +87,38 @@ class GitContext:
 
 server = MCPServer("natoday-checkout")
 git_context = GitContext(PROJECT)
+commit_git = CommitGit(PROJECT)
+
+
+def commit_call(method, *args):
+    try:
+        return method(*args)
+    except (GitReviewError, UnicodeError, ValueError) as exc:
+        return {"status": "error", "error": str(exc) if isinstance(exc, GitReviewError) else "invalid_git_data"}
+
+
+@server.tool()
+def get_changed_files(base: str, head: str, offset: int = 0, limit: int = 100) -> dict:
+    """Paginated changes from merge-base(base, head) to the explicit head commit."""
+    return commit_call(commit_git.changed_files, base, head, offset, limit)
+
+
+@server.tool()
+def get_diff(base: str, head: str, path: str, old_path: str | None = None, max_bytes: int = 65536) -> dict:
+    """Bounded unified diff with base/head line numbers in hunk headers; no textconv."""
+    return commit_call(commit_git.diff, base, head, path, old_path, max_bytes)
+
+
+@server.tool()
+def read_file_at_commit(commit: str, path: str, max_bytes: int = 524288) -> dict:
+    """Read regular UTF-8 Git blobs, never the working tree, symlinks or submodules."""
+    return commit_call(commit_git.read_file, commit, path, max_bytes)
+
+
+@server.tool()
+def list_commit_files(commit: str, offset: int = 0, limit: int = 100) -> dict:
+    """Paginated tracked paths and modes from a specific commit tree."""
+    return commit_call(commit_git.tree, commit, offset, limit)
 
 
 @server.tool()
@@ -101,5 +134,11 @@ def list_project_files(prefix: str = "", limit: int = 200) -> dict:
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", type=Path, default=PROJECT)
+    args = parser.parse_args()
+    git_context = GitContext(args.repo)
+    commit_git = CommitGit(args.repo)
     logging.basicConfig(level=logging.WARNING)
     server.run(transport="stdio")

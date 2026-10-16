@@ -18,3 +18,5 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
+artifacts/
+.review-demo/

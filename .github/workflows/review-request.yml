@@ -1,0 +1,31 @@
+name: Review request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Capture event metadata without checking out PR code
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          pr = event['pull_request']
+          request = dict(number=pr['number'], base=pr['base']['sha'], head=pr['head']['sha'],
+                         repository=os.environ['GITHUB_REPOSITORY'])
+          Path('request.json').write_text(json.dumps(request))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: review-request
+          path: request.json
+          retention-days: 3
+          if-no-files-found: error
